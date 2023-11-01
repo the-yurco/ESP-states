@@ -1,180 +1,349 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "soc/soc_caps.h"
-#include "esp_log.h"
-#include "esp_adc/adc_oneshot.h"
-#include "esp_adc/adc_cali.h"
-#include "esp_adc/adc_cali_scheme.h"
-#include <math.h>
 #include "driver/gpio.h"
-const static char *TAG = "EXAMPLE";
+#include "driver/ledc.h"
+#include <time.h>
 
-/*---------------------------------------------------------------
-        ADC General Macros
----------------------------------------------------------------*/
+const gpio_num_t LED_PIN_1 = GPIO_NUM_15;
+const gpio_num_t LED_PIN_2 = GPIO_NUM_4;
+const gpio_num_t LED_PIN_3 = GPIO_NUM_5;
+const gpio_num_t LED_PIN_4 = GPIO_NUM_18;
+const gpio_num_t LED_PIN_5 = GPIO_NUM_19;
+const gpio_num_t LED_PIN_6 = GPIO_NUM_21;
+const gpio_num_t LED_PIN_7 = GPIO_NUM_22;
+const gpio_num_t LED_PIN_8 = GPIO_NUM_23;
+#define LEDC_MODE LEDC_LOW_SPEED_MODE
+const int max = 4095;
+const int half = max/2;
+const int quarter = max/4;
+const int t_quarter = quarter*3;
 
-#define CHANNEL ADC_CHANNEL_0
-#define EXAMPLE_ADC_ATTEN ADC_ATTEN_DB_6
+uint32_t displayStartTime = 0;
+const uint32_t display_time = 95;
+uint8_t count = 0;
 
-int maxvoltage[] = {950, 1250, 1750, 2450};
+const gpio_num_t piny[] = {LED_PIN_1, LED_PIN_2, LED_PIN_3, LED_PIN_4, LED_PIN_5, LED_PIN_6, LED_PIN_7, LED_PIN_8};
+const uint8_t channel[] = {0,1,2,3,4,5,6,7};
+const uint8_t delay = 7;
+bool opakovanie = false;
 
-const gpio_num_t PIN1 = GPIO_NUM_15;
-const gpio_num_t PIN2 = GPIO_NUM_4;
-const gpio_num_t PIN3 = GPIO_NUM_5;
-const gpio_num_t PIN4 = GPIO_NUM_18;
-const gpio_num_t PIN5 = GPIO_NUM_19;
-const gpio_num_t PIN6 = GPIO_NUM_21;
-const gpio_num_t PIN7 = GPIO_NUM_22;
-const gpio_num_t PIN8 = GPIO_NUM_23;
-const gpio_num_t piny[] = {PIN1,PIN2,PIN3,PIN4,PIN5,PIN6,PIN7,PIN8};
+enum State 
+{
+    STATE_1,
+    STATE_2,
+    STATE_3,
+    STATE_4,
+    STATE_5,
+    STATE_6
+};
 
-void board_config()
+enum State current_state = STATE_1;
+
+void clean()
 {
     for (uint8_t i = 0; i < sizeof(piny) / sizeof(piny[0]); i++)
     {
-        gpio_reset_pin(piny[i]);
-        gpio_set_direction(piny[i],GPIO_MODE_OUTPUT);
-        gpio_set_level(piny[i], 0);
+        ledc_set_duty(LEDC_MODE,channel[i],0);
+        ledc_update_duty(LEDC_MODE, channel[i]);
+    }
+    
+}
+
+void reset_time()
+{
+    displayStartTime = (uint32_t) (clock() * 1000 / CLOCKS_PER_SEC);
+}
+
+void display()
+{
+    uint32_t currentTime = (uint32_t) (clock() * 1000 / CLOCKS_PER_SEC);
+    uint32_t timeDiff = currentTime - displayStartTime;
+    switch (current_state)
+    {
+        case STATE_1:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    for (uint8_t i = 0; i < 3; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                else
+                {
+                    clean();
+                    for (uint8_t i = 7; i > 4; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                reset_time();
+                current_state = STATE_2;
+            }
+            break;
+        
+        case STATE_2:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[0],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[0]);
+                    for (uint8_t i = 1; i < 4; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                else 
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[7],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[7]);
+                    for (uint8_t i = 6; i > 3; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                reset_time();
+                current_state = STATE_3;
+            }
+            break;
+        case STATE_3:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[0],half);
+                    ledc_update_duty(LEDC_MODE, channel[0]);
+                    ledc_set_duty(LEDC_MODE,channel[1],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[1]);
+                    for (uint8_t i = 2; i < 5; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                else
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[7],half);
+                    ledc_update_duty(LEDC_MODE, channel[7]);
+                    ledc_set_duty(LEDC_MODE,channel[6],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[6]);
+                    for (uint8_t i = 5; i > 2; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                reset_time();
+                current_state = STATE_4;
+            }
+            break;
+        case STATE_4:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[0 + count],quarter);
+                    ledc_update_duty(LEDC_MODE, channel[0 + count]);
+                    ledc_set_duty(LEDC_MODE,channel[1 + count],half);
+                    ledc_update_duty(LEDC_MODE, channel[1 + count]);
+                    ledc_set_duty(LEDC_MODE,channel[2 + count],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[2 + count]);
+                    for (uint8_t i = 3 + count; i < 6 + count; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                else
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE,channel[7 - count],quarter);
+                    ledc_update_duty(LEDC_MODE, channel[7 - count]);
+                    ledc_set_duty(LEDC_MODE,channel[6 - count],half);
+                    ledc_update_duty(LEDC_MODE, channel[6 - count]);
+                    ledc_set_duty(LEDC_MODE,channel[5 - count],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[5 - count]);
+                    for (int8_t i = 4 - count; i > 1 - count; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                    
+                }
+                reset_time();
+                count++;
+                if(count == 2)
+                {
+                    current_state = STATE_5;
+                    count = 0;
+                }
+            }
+            break;
+        case STATE_5:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE, channel[4],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[4]);
+                    ledc_set_duty(LEDC_MODE, channel[3], half);
+                    ledc_update_duty(LEDC_MODE, channel[3]);
+                    for (uint8_t i = 7; i > 4; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                }
+                else 
+                {
+                    clean();
+                    for (uint8_t i = 0; i < 3; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                    ledc_set_duty(LEDC_MODE, channel[3],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[3]);
+                    ledc_set_duty(LEDC_MODE, channel[4], half);
+                    ledc_update_duty(LEDC_MODE, channel[4]);
+                }
+                reset_time();
+                current_state = STATE_6;
+            }
+            break;
+
+        case STATE_6:
+            if (display_time < timeDiff)
+            {
+                if(!opakovanie)
+                {
+                    clean();
+                    ledc_set_duty(LEDC_MODE, channel[4],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[4]);
+                    for (uint8_t i = 7; i > 4; i--)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                    opakovanie = true;
+                }
+                else 
+                {
+                    clean();
+                    for (uint8_t i = 0; i < 3; i++)
+                    {
+                        ledc_set_duty(LEDC_MODE,channel[i],max);
+                        ledc_update_duty(LEDC_MODE, channel[i]);
+                    }
+                    ledc_set_duty(LEDC_MODE, channel[3],t_quarter);
+                    ledc_update_duty(LEDC_MODE, channel[3]);
+                    opakovanie = false;
+                }
+                reset_time();
+                current_state = STATE_1;
+            }
+            break;
     }
 }
 
-uint8_t get_state(int out)
-{
-    int max_out = 4095;
-    if(out == max_out) return 9;
-    else if (out >= (max_out / 8) * 7) return 8;
-    else if(out >= (max_out / 8) * 6) return 7;
-    else if(out >= (max_out / 8) * 5) return 6;
-    else if(out >= (max_out / 8) * 4) return 5;
-    else if(out >= (max_out / 8) * 3) return 4;
-    else if(out >= (max_out / 8) * 2) return 3;
-    else if(out >= max_out / 8) return 2;
-    else return 1;
-}
-
-void check_state(int out)
-{
-    switch (get_state(out)) {
-        case 1:
-            gpio_set_level(PIN1,0);
-            gpio_set_level(PIN2,0);
-            gpio_set_level(PIN3,0);
-            gpio_set_level(PIN4,0);
-            gpio_set_level(PIN5,0);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 2:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,0);
-            gpio_set_level(PIN3,0);
-            gpio_set_level(PIN4,0);
-            gpio_set_level(PIN5,0);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 3:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,0);
-            gpio_set_level(PIN4,0);
-            gpio_set_level(PIN5,0);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 4:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,0);
-            gpio_set_level(PIN5,0);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 5:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,1);
-            gpio_set_level(PIN5,0);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 6:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,1);
-            gpio_set_level(PIN5,1);
-            gpio_set_level(PIN6,0);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 7:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,1);
-            gpio_set_level(PIN5,1);
-            gpio_set_level(PIN6,1);
-            gpio_set_level(PIN7,0);
-            gpio_set_level(PIN8,0);
-            break;
-        case 8:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,1);
-            gpio_set_level(PIN5,1);
-            gpio_set_level(PIN6,1);
-            gpio_set_level(PIN7,1);
-            gpio_set_level(PIN8,0);
-            break;
-        case 9:
-            gpio_set_level(PIN1,1);
-            gpio_set_level(PIN2,1);
-            gpio_set_level(PIN3,1);
-            gpio_set_level(PIN4,1);
-            gpio_set_level(PIN5,1);
-            gpio_set_level(PIN6,1);
-            gpio_set_level(PIN7,1);
-            gpio_set_level(PIN8,1);
-            break;
-    }   
-}
-
-void app_main(void)
-{
-    //-------------ADC1 Init---------------//
-    adc_oneshot_unit_handle_t adc1_handle;
-    adc_oneshot_unit_init_cfg_t init_config1 = {
-        .unit_id = ADC_UNIT_1,
+void app_main() {
+    ledc_timer_config_t timer_config = {
+        .speed_mode = LEDC_LOW_SPEED_MODE,
+        .timer_num = LEDC_TIMER_0,
+        .duty_resolution = LEDC_TIMER_12_BIT,
+        .freq_hz = 5000,
+        .clk_cfg = LEDC_AUTO_CLK
     };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config1, &adc1_handle));
+    ESP_ERROR_CHECK(ledc_timer_config(&timer_config));
 
-    //-------------ADC1 Config---------------//
-    adc_oneshot_chan_cfg_t config = {
-        .bitwidth = ADC_BITWIDTH_12,
-        .atten = EXAMPLE_ADC_ATTEN,
+    ledc_channel_config_t ledc_channel[8] = {
+        {
+            .channel    = 0,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_1,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 1,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_2,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 2,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_3,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 3,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_4,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 4,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_5,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 5,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_6,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 6,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_7,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        },
+        {
+            .channel    = 7,
+            .duty       = 0,
+            .gpio_num   = LED_PIN_8,
+            .speed_mode = LEDC_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_TIMER_0
+        }
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, CHANNEL, &config));
-    board_config();
-
-    while (1) {
-        int out = 0;
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, CHANNEL, &out));
-        //ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, CHANNEL, out);
-        check_state(out);
-        //double voltage = (double)out * maxvoltage[EXAMPLE_ADC_ATTEN]  / pow(2, config.bitwidth);
-        vTaskDelay(pdMS_TO_TICKS(100));
-        //ESP_LOGW("Voltage:"," %.2f mV", voltage);
+    for (uint8_t i = 0; i < sizeof(ledc_channel) / sizeof(ledc_channel[0]); i++)
+    {
+        ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel[i]));
     }
-}
+
+    while (1) 
+    {
+        display(opakovanie);
+        vTaskDelay(1);
+    }
+}   
